@@ -63,9 +63,8 @@ def read_word():
   word = 0
   
   for i, pin in enumerate(address_pins):
-    if pin.value():
-      word |= 1 << i
-      
+    word = (word << i) | pin.value()
+
   ale_high_pin.high()
   
   utime.sleep_us(1)
