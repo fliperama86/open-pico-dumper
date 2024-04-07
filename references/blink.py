@@ -1,5 +1,5 @@
 from machine import Pin
-from time import sleep
+from utime import sleep, sleep_ms, sleep_us
 
 led_pin = Pin('LED', Pin.OUT)
 
@@ -11,8 +11,16 @@ read_pin = Pin(11, Pin.OUT)
 ale_low_pin = Pin(17, Pin.OUT)
 ale_high_pin = Pin(16, Pin.OUT)
 
+bit_array = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
 # while True:
 led_pin.toggle()
 for pin in [write_pin, read_pin, ale_low_pin, ale_high_pin]:
-    pin.value(1)
-    # sleep(1)
+    pin.low()
+    pin.high()
+    pin.init(Pin.IN)
+
+sleep_ms(1)
+for pin in [write_pin, read_pin, ale_low_pin, ale_high_pin]:
+    print(pin.value(), end='')
+    

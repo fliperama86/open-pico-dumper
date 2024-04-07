@@ -1,78 +1,125 @@
 from machine import Pin
-import utime
+from utime import sleep, sleep_ms, sleep_us
 
 rom_base_address = 0x10000000
 cart_size = 12
 file_path = "dump.n64"
 led_pin = Pin(25, Pin.OUT)
 
-pico_pins_map = [28, 27, 26, 22, 21, 20, 19, 18, 2, 3, 4, 5, 6, 7, 8, 9]
+pico_pins_map = [28, 27, 26, 22, 21, 20, 19, 18, 9, 8, 7, 6, 5, 4, 3, 2]
 address_pins = [Pin(i, Pin.OUT) for i in pico_pins_map]
 
 write_pin = Pin(10, Pin.OUT)
 read_pin = Pin(11, Pin.OUT)
 
 ale_low_pin = Pin(17, Pin.OUT)
-ale_high_pin = Pin(18, Pin.OUT)
+ale_high_pin = Pin(16, Pin.OUT)
 
-def set_address_pins_out():
+reset_pin = Pin(15, Pin.OUT)
+
+def setup_cart():
+  # Set Address Pins to Output and set them low
+  set_pico_address_pins_out()
+  
+  # Set Control Pins to Output RESET(PH0) WR(PH5) RD(PH6) aleL(PC0) aleH(PC1)
+  for pin in [reset_pin, write_pin, read_pin, ale_low_pin, ale_high_pin]:
+    pin.init(Pin.OUT)
+
+  # Pull RESET(PH0) low until we are ready
+  reset_pin.low()
+  
+  # Output a high signal on WR(PH5) RD(PH6), pins are active low therefore
+  # everything is disabled now
+  write_pin.high()
+  read_pin.high()
+  
+  # Pull aleL(PC0) low and aleH(PC1) high
+  ale_low_pin.low()
+  ale_high_pin.high()
+  
+  # Wait until all is stable
+  sleep_us(1)
+  
+  # Pull RESET(PH0) high to start eeprom
+  reset_pin.high()
+
+def set_pico_address_pins_out():
   for pin in address_pins:
     pin.init(Pin.OUT)
     pin.low()
 
-def set_address_pins_in():
+def set_pico_address_pins_in():
   for pin in address_pins:
-    pin.init(Pin.IN, Pin.PULL_DOWN)
+    pin.init(Pin.IN)
 
 def set_address(address):
-  set_address_pins_out()
+  # Set address pins to output
+  set_pico_address_pins_out()
 
-  address_low_out = address & 0xFFFF
-  address_high_out = address >> 16
+  # Split address into two words
+  address_low = address & 0xFFFF
+  address_high = address >> 16
 
+  # Switch WR(PH5) RD(PH6) ale_L(PC0) ale_H(PC1) to high (since the pins are active low)
   write_pin.high()
   read_pin.high()
   ale_low_pin.high()
-    
-  utime.sleep_us(1)
+  sleep_us(1)
   ale_high_pin.high()
-    
-  for i in range(0, 16, 1):
-    bit = (address_high_out >> i) & 1
-    address_pins[15 - i].value(bit)
-
-  utime.sleep_us(1)
   
+  write_word(address_high)
+
+  sleep_us(1)
   ale_high_pin.low()
 
-  for i in range(0, 16, 1):
-    bit = (address_low_out >> i) & 1
-    address_pins[15 - i].value(bit)
+  write_word(address_low)
   
-  utime.sleep_us(1)
+  sleep_us(1)
   ale_low_pin.low()
   
-  utime.sleep_us(1)
-  
-  set_address_pins_in()
+  sleep_us(1)
+  set_pico_address_pins_in()
+
+def read_word_from_address_pins():
+  word = 0
+  for i, pin in enumerate(address_pins):
+    if pin.value():
+      word |= 1 << i
+  return word
+
+def write_word(word):
+  for i in range(0, 16, 1):
+    bit = (word >> i) & 1
+    address_pins[i].value(bit)
 
 def read_word():
   read_pin.low()
-  utime.sleep_us(1)
-  
-  word = 0
-  
-  for i, pin in enumerate(address_pins):
-    word = (word << i) | pin.value()
-
-  ale_high_pin.high()
-  
-  utime.sleep_us(1)
-  
+  sleep_us(1)
+  word = read_word_from_address_pins()
+  read_pin.high()
+  sleep_us(1)
   return word
 
+def print_hex(data):
+  for i in range(0, len(data), 16):
+    line = data[i:i+16]
+    hex_line = ' '.join(f'{byte:02X}' for byte in line)
+    print(hex_line)
+
+def get_cart_id():
+  set_address(rom_base_address)
+  buffer = bytearray(64)
+  for i in range(0, 64, 2):
+    word = read_word()
+    low_byte = word & 0xFF
+    high_byte = word >> 8
+    buffer[i] = high_byte
+    buffer[i + 1] = low_byte
+  return buffer
+
+
 def read_cart():
-  with open(file_path, "wb") as file:
+  with open(file_path, 'w') as file:
     write_buffer = bytearray(512)
 
     # Read the data in 512 byte chunks
@@ -90,20 +137,15 @@ def read_cart():
         word = read_word()
         write_buffer[bufferIndex] = word >> 8
         write_buffer[bufferIndex + 1] = word & 0xFF
-
-      file.write(write_buffer)
       
-      print("write_buffer:")
-      print_hex(write_buffer)
-      
-      # TODO REMOVE THIS LIMIT AFTER IMPLEMTING UART
-      if file.tell() >= 1024 * 1024 or 1 == 1:
+      if file.tell() == 1024:
         break
 
-def print_hex(data):
-  for i in range(0, len(data), 16):
-    line = data[i:i+16]
-    hex_line = ' '.join(f'{byte:02X}' for byte in line)
-    print(hex_line)
-    
-read_cart()
+def main():
+  setup_cart()
+  cart_id = get_cart_id()
+  cart_name = cart_id[32:42].decode("utf-8")
+  print("Cart Name:", cart_name)
+  read_cart()
+  
+main()
