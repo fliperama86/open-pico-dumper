@@ -1,8 +1,8 @@
 from machine import Pin
 from utime import sleep, sleep_ms, sleep_us
 
-rom_base_address = 0x10000000
 cart_size = 12
+rom_base_address = 0x10000000
 file_path = "dump.n64"
 led_pin = Pin(25, Pin.OUT)
 
@@ -82,9 +82,9 @@ def set_address(address):
 
 def read_word_from_address_pins():
   word = 0
-  for i, pin in enumerate(address_pins):
-    if pin.value():
-      word |= 1 << i
+  for i in range(16):
+    bit = address_pins[i].value()
+    word |= bit << i
   return word
 
 def write_word(word):
@@ -94,10 +94,8 @@ def write_word(word):
 
 def read_word():
   read_pin.low()
-  sleep_us(1)
   word = read_word_from_address_pins()
   read_pin.high()
-  sleep_us(1)
   return word
 
 def print_hex(data):
@@ -117,35 +115,52 @@ def get_cart_id():
     buffer[i + 1] = low_byte
   return buffer
 
-
+max_file_size = 1024 * 1024
 def read_cart():
-  with open(file_path, 'w') as file:
-    write_buffer = bytearray(512)
+  buffer_size = 100 * 1024
+
+  with open(file_path, 'wb') as file:
+    write_buffer = bytearray(buffer_size)
+    offset = 0
+    progress = 0
 
     # Read the data in 512 byte chunks
     for rom_address in range(rom_base_address, rom_base_address + (cart_size * 1024 * 1024), 512):
-      # # Blink led
-      if (rom_address & 0x3FFF) == 0:
-        led_pin.high()
-      else:
-        led_pin.low()
-
       # Set the address for the next 512 bytes
       set_address(rom_address)
 
       for bufferIndex in range(0, 512, 2):
         word = read_word()
-        write_buffer[bufferIndex] = word >> 8
-        write_buffer[bufferIndex + 1] = word & 0xFF
+        write_buffer[bufferIndex + offset] = word >> 8
+        write_buffer[bufferIndex + offset + 1] = word & 0xFF
       
-      if file.tell() == 1024:
+      offset += 512
+      
+      if (offset >= buffer_size):
+        file.write(write_buffer)
+        offset = 0
+      
+      # Report progress
+      if (rom_address & 0x3FFF) == 0:
+        led_pin.high()
+        print(f'Progress: {progress:.0f}%', end='\r')
+        progress += (0x3FFF / max_file_size) * 100
+      else:
+        led_pin.low()
+    
+      if (file.tell() >= max_file_size):
+        print('')
+        print("Done!                                    ")
         break
 
 def main():
   setup_cart()
   cart_id = get_cart_id()
-  cart_name = cart_id[32:42].decode("utf-8")
-  print("Cart Name:", cart_name)
+  cart_name = cart_id[32:42].decode('utf-8')
+  print('Cart Name:', cart_name)
+  print('Dumping cart...')
+  setup_cart()
   read_cart()
   
 main()
+
