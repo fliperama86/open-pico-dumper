@@ -1,5 +1,6 @@
 from machine import Pin
-from utime import sleep, sleep_ms, sleep_us
+from utime import sleep_us
+import os
 
 cart_size = 12
 rom_base_address = 0x10000000
@@ -64,20 +65,16 @@ def set_address(address):
   write_pin.high()
   read_pin.high()
   ale_low_pin.high()
-  sleep_us(1)
   ale_high_pin.high()
   
   write_word(address_high)
 
-  sleep_us(1)
   ale_high_pin.low()
 
   write_word(address_low)
   
-  sleep_us(1)
   ale_low_pin.low()
   
-  sleep_us(1)
   set_pico_address_pins_in()
 
 def read_word_from_address_pins():
@@ -88,7 +85,7 @@ def read_word_from_address_pins():
   return word
 
 def write_word(word):
-  for i in range(0, 16, 1):
+  for i in range(16):
     bit = (word >> i) & 1
     address_pins[i].value(bit)
 
@@ -118,7 +115,7 @@ def get_cart_id():
 max_file_size = 1024 * 1024
 def read_cart():
   buffer_size = 100 * 1024
-
+  os.remove(file_path)
   with open(file_path, 'wb') as file:
     write_buffer = bytearray(buffer_size)
     offset = 0
