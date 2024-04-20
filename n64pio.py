@@ -14,11 +14,13 @@ def set_address_pio():
   # First part: output the high 16 bits (via thresh config on SM)
   pull(block)           # Pull the next 32-bit word from FIFO
   mov(x, osr)           # Move data from OSR to scratch X register
+  out(pins, 16)
   
   # Toggle the control pin to indicate high bits are set
   set(pindirs, 0b1111)  # Make control pin an output
   set(pins, 0b1111)     # Set control pin high
   nop() [31]
+  out(pins, 16)
 
   # Second part: output the low 16 bits (via thresh config on SM)
   mov(osr, x)           # Move the low 16 bits into the OSR
@@ -28,19 +30,19 @@ def set_address_pio():
 def read_word_pio():
   # Set the control pin low to request data
   set(pins, 0)
-  # Delay for setup time, adjust delay as needed (number represents cycles)
   nop() [9]
+
   # Read 16 bits of data
   in_(pins, 16)
+
   # Set the control pin high to advance to the next data set
   set(pins, 1)
-  # Push the read data to RX FIFO
+  
   push(noblock)
 
 # Configure PIO and state machine
-read_state_machine = StateMachine(0, read_word_pio, freq=SM_FREQ, in_base=Pin(0), set_base=Pin(CONTROL_PIN), push_thresh=16)
 address_state_machine = StateMachine(1, set_address_pio, freq=2000000, out_base=Pin(0), set_base=Pin(CONTROL_PIN))
-
+read_state_machine = StateMachine(0, read_word_pio, freq=SM_FREQ, in_base=Pin(0), set_base=Pin(CONTROL_PIN))
 
 # Function to read 512 bytes of data
 def read_512():
