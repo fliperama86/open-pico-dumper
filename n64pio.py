@@ -11,19 +11,17 @@ SM_FREQ = 125_000_000  # State machine frequency
 
 @rp2.asm_pio(out_shiftdir=PIO.SHIFT_LEFT, out_init=PIO.OUT_LOW, set_init=PIO.OUT_LOW)
 def set_address_pio():
-  # First part: output the high 16 bits
+  # First part: output the high 16 bits (via thresh config on SM)
   pull(block)           # Pull the next 32-bit word from FIFO
   mov(x, osr)           # Move data from OSR to scratch X register
-  out(pins, 16)         # Output the high 16 bits to the address pins
   
   # Toggle the control pin to indicate high bits are set
   set(pindirs, 0b1111)  # Make control pin an output
   set(pins, 0b1111)     # Set control pin high
   nop() [31]
 
-  # Second part: output the low 16 bits
+  # Second part: output the low 16 bits (via thresh config on SM)
   mov(osr, x)           # Move the low 16 bits into the OSR
-  out(pins, 16)         # Output the low 16 bits to the address pins
 
 # PIO program to read data from the pins
 @rp2.asm_pio(set_init=PIO.OUT_HIGH)
@@ -40,7 +38,7 @@ def read_word_pio():
   push(noblock)
 
 # Configure PIO and state machine
-read_state_machine = StateMachine(0, read_word_pio, freq=SM_FREQ, in_base=Pin(0), set_base=Pin(CONTROL_PIN))
+read_state_machine = StateMachine(0, read_word_pio, freq=SM_FREQ, in_base=Pin(0), set_base=Pin(CONTROL_PIN), push_thresh=16)
 address_state_machine = StateMachine(1, set_address_pio, freq=2000000, out_base=Pin(0), set_base=Pin(CONTROL_PIN))
 
 
@@ -72,6 +70,7 @@ led_pin = Pin(25, Pin.OUT)
 def read_cart():
   base_address = 0x10000000
   cart_size = 12 * 1024 * 1024 # 12 MB
+  cart_size = 512
   for i in range(base_address, base_address + cart_size, 512):
     address_state_machine.active(1)
     address_state_machine.put(base_address + i)
@@ -82,7 +81,7 @@ def read_cart():
     else:
       led_pin.low()
     
-    read_512()
+    print_hex(read_512())
 
 def main():
   start_time = time_ns()
